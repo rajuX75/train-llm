@@ -25,7 +25,7 @@ class RMSNorm(nn.Module):
         return self.weight * x
 
 class RotaryPositionalEmbedding(nn.Module):
-    """Optimized RoPE implementation with caching."""
+    """Pre-computes positional embeddings for RoPE."""
     def __init__(self, dim: int, max_seq_len: int = 8192, base: float = 10000.0):
         super().__init__()
         self.dim = dim
@@ -33,21 +33,12 @@ class RotaryPositionalEmbedding(nn.Module):
         self.base = base
 
         inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float() / dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        t = torch.arange(max_seq_len, dtype=inv_freq.dtype)
+        freqs = torch.einsum("i,j->ij", t, inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
 
-        self._seq_len_cached = 0
-        self._cos_cached = None
-        self._sin_cached = None
-        self._update_cache(max_seq_len)
-
-    def _update_cache(self, seq_len: int):
-        if seq_len > self._seq_len_cached:
-            self._seq_len_cached = seq_len
-            t = torch.arange(seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
-            freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-            emb = torch.cat((freqs, freqs), dim=-1)
-            self._cos_cached = emb.cos()[None, :, None, :]
-            self._sin_cached = emb.sin()[None, :, None, :]
+        self.register_buffer("cos_cached", emb.cos()[None, :, None, :], persistent=False)
+        self.register_buffer("sin_cached", emb.sin()[None, :, None, :], persistent=False)
 
     def rotate_half(self, x):
         x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
@@ -55,11 +46,11 @@ class RotaryPositionalEmbedding(nn.Module):
 
     def forward(self, q, k):
         seq_len = q.shape[1]
-        if seq_len > self._seq_len_cached:
-            self._update_cache(seq_len)
+        if seq_len > self.max_seq_len:
+            raise ValueError(f"Sequence length {seq_len} exceeds model's max sequence length of {self.max_seq_len}")
 
-        cos = self._cos_cached[:, :seq_len, :, :]
-        sin = self._sin_cached[:, :seq_len, :, :]
+        cos = self.cos_cached[:, :seq_len, :, :]
+        sin = self.sin_cached[:, :seq_len, :, :]
 
         q_embed = (q * cos) + (self.rotate_half(q) * sin)
         k_embed = (k * cos) + (self.rotate_half(k) * sin)
