@@ -11,6 +11,25 @@ from domains.training.application.training_service import TrainingService
 from domains.inference.application.generation_service import GenerationService
 from shared.utils.data_creation import create_sample_data
 
+
+def get_response(generation_service: GenerationService, prompt: str) -> str:
+    """
+    Generates a response for a given prompt.
+
+    Args:
+        generation_service: The service responsible for text generation.
+        prompt: The input text to generate a response for.
+
+    Returns:
+        The generated response string.
+    """
+    try:
+        response = generation_service.generate(prompt, max_length=50, temperature=0.7)
+        return response
+    except Exception as e:
+        print(f"❌ Generation error: {e}\n")
+        return "Sorry, I encountered an error."
+
 def main():
     """Main function to orchestrate the training and evaluation of the chat model."""
     print("\n" + "="*60)
@@ -112,16 +131,32 @@ def main():
 
     for prompt in test_prompts:
         print(f"\n💬 Prompt: {prompt}")
-        try:
-            response = generation_service.generate(prompt, max_length=50, temperature=0.7)
-            print(f"🤖 Response: {response}\n")
-        except Exception as e:
-            print(f"❌ Generation error: {e}\n")
+        response = get_response(generation_service, prompt)
+        print(f"🤖 Response: {response}\n")
 
     print("="*60)
     print("  ✅ TRAINING COMPLETED SUCCESSFULLY")
     print(f"  📁 Final model checkpoints in: {training_config.output_dir}")
     print("="*60 + "\n")
+
+    # 8. Interactive Session
+    print("\n" + "="*60)
+    print("  INTERACTIVE CHAT SESSION")
+    print("  (Type 'quit' or 'exit' to end)")
+    print("="*60 + "\n")
+
+    while True:
+        user_prompt = input("You: ")
+        if user_prompt.lower() in ["quit", "exit"]:
+            print("\n👋 Exiting interactive session. Goodbye!")
+            break
+
+        if not user_prompt.strip().lower().startswith("user:"):
+             user_prompt = f"User: {user_prompt}"
+
+        response = get_response(generation_service, user_prompt)
+        print(f"🤖 Bot: {response}\n")
+
 
 if __name__ == "__main__":
     try:
