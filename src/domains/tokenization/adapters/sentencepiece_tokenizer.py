@@ -32,6 +32,12 @@ class SentencePieceTokenizer(Tokenizer):
                     if text.strip():
                         f.write(text.strip() + "\n")
 
+            # Exclude control symbols from user-defined symbols, as they are handled by their specific parameters (unk_id, etc.)
+            control_symbols = {"<s>", "</s>", "<pad>", "<unk>"}
+            user_defined_symbols = [
+                s for s in self._special_tokens.keys() if s not in control_symbols
+            ]
+
             spm.SentencePieceTrainer.train(
                 input=temp_file,
                 model_prefix=model_prefix,
@@ -39,7 +45,7 @@ class SentencePieceTokenizer(Tokenizer):
                 model_type="bpe",
                 character_coverage=0.9995,
                 num_threads=os.cpu_count() or 1,
-                user_defined_symbols=list(self._special_tokens.keys()),
+                user_defined_symbols=user_defined_symbols,
                 pad_id=self._special_tokens["<pad>"],
                 unk_id=self._special_tokens["<unk>"],
                 bos_id=self._special_tokens["<s>"],

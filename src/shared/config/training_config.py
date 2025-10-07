@@ -6,13 +6,13 @@ from pathlib import Path
 @dataclass
 class ModelConfig:
     """Advanced model configuration with validation"""
-    vocab_size: int = 32000
-    hidden_size: int = 2048
-    intermediate_size: int = 5632
-    num_hidden_layers: int = 24
-    num_attention_heads: int = 16
-    num_key_value_heads: int = 4  # GQA
-    max_position_embeddings: int = 4096
+    vocab_size: int = 512
+    hidden_size: int = 128
+    intermediate_size: int = 256
+    num_hidden_layers: int = 4
+    num_attention_heads: int = 4
+    num_key_value_heads: int = 2  # GQA
+    max_position_embeddings: int = 512
     rope_theta: float = 10000.0
     layer_norm_eps: float = 1e-6
     hidden_dropout_prob: float = 0.1

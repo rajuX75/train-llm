@@ -7,12 +7,12 @@ def test_main_execution():
     We mock external dependencies and file system interactions to isolate the test.
     """
     # Mock all major components to prevent actual training, file I/O, etc.
-    with patch('app.main.TrainingService') as mock_trainer, \
-         patch('app.main.SentencePieceTokenizer') as mock_tokenizer, \
-         patch('app.main.ChatDataset') as mock_dataset, \
-         patch('app.main.ChatModel') as mock_model, \
-         patch('app.main.glob.glob') as mock_glob, \
-         patch('app.main.os.path.exists') as mock_exists, \
+    with patch('src.app.main.TrainingService') as mock_trainer, \
+         patch('src.app.main.SentencePieceTokenizer') as mock_tokenizer, \
+         patch('src.app.main.ChatDataset') as mock_dataset, \
+         patch('src.app.main.ChatModel') as mock_model, \
+         patch('src.app.main.glob.glob') as mock_glob, \
+         patch('src.app.main.os.path.exists') as mock_exists, \
          patch('builtins.open', mock_open(read_data="User: Hello\nAssistant: Hi")) as mock_file:
 
         # Setup mock returns
@@ -25,7 +25,7 @@ def test_main_execution():
         mock_model.return_value = mock_model_instance
 
         # Import main after mocks are in place
-        from app.main import main
+        from src.app.main import main
 
         # Execute the main function
         try:
