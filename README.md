@@ -82,9 +82,10 @@ The script will:
 
 ## ⚙️ Configuration
 
-The project's configuration is managed in `src/shared/config/training_config.py`. You can modify this file to adjust hyperparameters for the model and training process.
+The project's configuration is managed in `src/shared/config/config.yaml`. You can modify this file to adjust hyperparameters for the model and training process.
 
-- **`ModelConfig`**: Defines the model's architecture (e.g., `hidden_size`, `num_hidden_layers`, `vocab_size`).
-- **`TrainingConfig`**: Defines the training parameters (e.g., `batch_size`, `learning_rate`, `num_epochs`).
+The configuration is split into two main sections:
+- **`model`**: Defines the model's architecture (e.g., `hidden_size`, `num_hidden_layers`, `vocab_size`).
+- **`training`**: Defines the training parameters (e.g., `batch_size`, `learning_rate`, `num_epochs`).
 
 Enjoy training your own chat model!
