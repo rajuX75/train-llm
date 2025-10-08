@@ -1,48 +1,63 @@
-import random
+import os
+from datasets import load_dataset
 
-def generate_large_dataset(filename="data/large_conversations.txt", num_samples=1000):
+def format_conversation(prompt, response):
+    """Formats a conversation into the required 'User: ...\nAssistant: ...' format."""
+    return f"User: {prompt}\nAssistant: {response}\n\n"
+
+def generate_dataset_from_hub(
+    filename="data/openassistant_conversations.txt",
+    dataset_name="OpenAssistant/oasst1",
+    split="train",
+):
     """
-    Generates a large conversational dataset with diverse topics.
+    Downloads a conversational dataset from the Hugging Face Hub, processes it,
+    and saves it to a text file.
+
+    This function processes message trees to extract two-turn conversations
+    (a user prompt followed by an assistant's response).
 
     Args:
         filename (str): The path to the output file.
-        num_samples (int): The number of user-assistant conversation pairs to generate.
+        dataset_name (str): The name of the dataset on the Hugging Face Hub.
+        split (str): The dataset split to use (e.g., 'train', 'validation').
     """
-    topics = {
-        "science": [
-            ("What is the powerhouse of the cell?", "The mitochondrion is known as the powerhouse of the cell."),
-            ("What is the speed of light?", "The speed of light in a vacuum is approximately 299,792 kilometers per second."),
-            ("What are the primary colors?", "The primary colors in light are red, green, and blue (RGB)."),
-            ("What is photosynthesis?", "Photosynthesis is the process used by plants, algae, and certain bacteria to convert light energy into chemical energy."),
-        ],
-        "history": [
-            ("Who was the first president of the United States?", "George Washington was the first president of the United States."),
-            ("When did World War II end?", "World War II ended in 1945."),
-            ("What was the Renaissance?", "The Renaissance was a period in European history marking the transition from the Middle Ages to modernity."),
-        ],
-        "technology": [
-            ("What is a neural network?", "A neural network is a series of algorithms that endeavors to recognize underlying relationships in a set of data through a process that mimics the way the human brain operates."),
-            ("What is the difference between RAM and ROM?", "RAM (Random Access Memory) is volatile memory that stores data temporarily, while ROM (Read-Only Memory) is non-volatile memory that stores data permanently."),
-            ("What is object-oriented programming?", "Object-oriented programming (OOP) is a programming paradigm based on the concept of 'objects', which can contain data and code."),
-        ],
-        "creative": [
-            ("Tell me a joke.", "Why don't scientists trust atoms? Because they make up everything!"),
-            ("Write a short poem about nature.", "The wind whispers through the trees,\nA gentle, rustling, soft-breeze.\nThe sun warms the fertile ground,\nWhere life and beauty can be found."),
-            ("What is a good book to read?", "It depends on your taste, but 'Dune' by Frank Herbert is a classic science fiction novel that many enjoy."),
-        ],
-    }
+    print(f"📥 Downloading dataset '{dataset_name}'...")
+    dataset = load_dataset(dataset_name, split=split)
+    print("✅ Dataset downloaded successfully.")
 
-    all_conversations = []
-    for category in topics.values():
-        all_conversations.extend(category)
+    # Ensure the output directory exists
+    output_dir = os.path.dirname(filename)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
+    processed_conversations = 0
     with open(filename, "w", encoding="utf-8") as f:
-        for _ in range(num_samples):
-            user_q, assistant_a = random.choice(all_conversations)
-            f.write(f"User: {user_q}\n")
-            f.write(f"Assistant: {assistant_a}\n\n")
+        # The dataset is a flat list of messages that need to be reconstructed into trees.
+        # We can group messages by their message_tree_id.
+        message_trees = {}
+        for msg in dataset:
+            if msg["message_tree_id"] not in message_trees:
+                message_trees[msg["message_tree_id"]] = []
+            message_trees[msg["message_tree_id"]].append(msg)
 
-    print(f"✅ Successfully generated {num_samples} samples in '{filename}'")
+        # Process each conversation tree
+        for tree_id, messages in message_trees.items():
+            # Create a dictionary of messages by their ID for easy lookup
+            msg_map = {msg["message_id"]: msg for msg in messages}
+
+            # Find root messages (prompts)
+            for msg in messages:
+                if msg["parent_id"] is None and msg["role"] == "prompter":
+                    # Find direct assistant replies to this prompt
+                    for reply in messages:
+                        if reply["parent_id"] == msg["message_id"] and reply["role"] == "assistant":
+                            if msg["lang"] == "en" and reply["lang"] == "en":
+                                formatted_conv = format_conversation(msg["text"], reply["text"])
+                                f.write(formatted_conv)
+                                processed_conversations += 1
+
+    print(f"✅ Successfully processed and saved {processed_conversations} conversations to '{filename}'.")
 
 if __name__ == "__main__":
-    generate_large_dataset()
+    generate_dataset_from_hub()

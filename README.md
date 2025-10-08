@@ -53,21 +53,17 @@ pip install -e .
 
 ## ▶️ How to Run
 
-### 1. Prepare Your Dataset
+### 1. Generate the Dataset
 
-Place your conversational data in the `data/` directory. The data should be in a text file where each conversation is separated by a blank line, and each turn is prefixed with `User:` or `Assistant:`.
+This project includes a script to download and process a high-quality conversational dataset from the Hugging Face Hub. To generate the dataset, run the following command from the root of the repository:
 
-Example (`data/conversations.txt`):
-
-```
-User: What is the capital of France?
-Assistant: The capital of France is Paris.
-
-User: Can you tell me a joke?
-Assistant: Why don't scientists trust atoms? Because they make up everything!
+```bash
+python generate_dataset.py
 ```
 
-If no data is found, the script will automatically generate a sample dataset.
+This will download the `OpenAssistant/oasst1` dataset, format it into the required `User: ...\nAssistant: ...` structure, and save it to `data/openassistant_conversations.txt`.
+
+The generated data directory is included in the `.gitignore` file, so the dataset will not be committed to your repository.
 
 ### 2. Start the Training
 

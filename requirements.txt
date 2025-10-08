@@ -4,3 +4,4 @@ numpy
 einops
 tqdm
 pytest
+datasets
