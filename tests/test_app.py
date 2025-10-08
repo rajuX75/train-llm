@@ -1,9 +1,10 @@
 import pytest
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import patch, MagicMock
 
 # Import the target module and functions to be tested
 import src.app.main as app_main
 from src.app.main import main, get_response
+from src.shared.config.training_config import ModelConfig, TrainingConfig
 
 def test_main_execution_and_interactive_loop():
     """
@@ -11,22 +12,45 @@ def test_main_execution_and_interactive_loop():
     Mocks external dependencies and simulates 'quit' to exit the loop.
     """
     # We patch the objects directly on the imported module `app_main` to avoid string resolution issues.
-    with patch.object(app_main, 'TrainingService') as mock_TrainingService, \
+    with patch.object(app_main, 'ConfigLoader') as mock_ConfigLoader, \
+         patch.object(app_main, 'TrainingService') as mock_TrainingService, \
          patch.object(app_main, 'SentencePieceTokenizer') as mock_SentencePieceTokenizer, \
          patch.object(app_main, 'ChatDataset') as mock_ChatDataset, \
          patch.object(app_main, 'ChatModel') as mock_ChatModel, \
          patch.object(app_main, 'GenerationService') as mock_GenerationService, \
          patch.object(app_main, 'glob') as mock_glob, \
          patch.object(app_main.os.path, 'exists') as mock_exists, \
-         patch('builtins.open', mock_open(read_data="User: Hello\nAssistant: Hi")) as mock_file, \
          patch('builtins.input', side_effect=['quit']) as mock_input:
 
         # --- Setup Mocks ---
+        # Mock configuration loading
+        mock_model_config = MagicMock(spec=ModelConfig)
+        mock_model_config.vocab_size = 8000
+        mock_model_config.max_position_embeddings = 512
+
+        mock_training_config = MagicMock(spec=TrainingConfig)
+        mock_training_config.seed = 42
+        mock_training_config.data_dir = "./data"
+        mock_training_config.cache_dir = "./cache"
+        mock_training_config.output_dir = "./models"
+
+        mock_config_loader_instance = MagicMock()
+        def get_section_side_effect(section_name, config_class):
+            if section_name == 'model':
+                return mock_model_config
+            if section_name == 'training':
+                return mock_training_config
+            pytest.fail(f"Unexpected config section requested: {section_name}")
+
+        mock_config_loader_instance.get_section.side_effect = get_section_side_effect
+        mock_ConfigLoader.from_yaml.return_value = mock_config_loader_instance
+
+        # Mock other dependencies
         mock_glob.glob.return_value = ['dummy_data.txt']
         mock_exists.return_value = True  # Assume tokenizer exists to simplify the test
 
         mock_tokenizer_instance = MagicMock()
-        mock_tokenizer_instance.get_vocab_size.return_value = 512
+        mock_tokenizer_instance.get_vocab_size.return_value = 8000
         mock_SentencePieceTokenizer.return_value = mock_tokenizer_instance
 
         mock_model_instance = MagicMock()
@@ -48,6 +72,7 @@ def test_main_execution_and_interactive_loop():
 
         # --- Assertions ---
         # Assert that the major components were initialized as expected
+        mock_ConfigLoader.from_yaml.assert_called_once()
         mock_glob.glob.assert_called_once_with("./data/*.txt")
         mock_exists.assert_called_once_with("tokenizer.model")
         mock_SentencePieceTokenizer.assert_called_once()

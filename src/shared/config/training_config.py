@@ -1,3 +1,4 @@
+import torch
 from dataclasses import dataclass, field
 from typing import Optional
 from pathlib import Path
@@ -5,23 +6,23 @@ from pathlib import Path
 # ============== CONFIGURATION ==============
 @dataclass
 class ModelConfig:
-    """Advanced model configuration with validation"""
-    vocab_size: int = 8000
-    hidden_size: int = 128
-    intermediate_size: int = 256
-    num_hidden_layers: int = 4
-    num_attention_heads: int = 4
-    num_key_value_heads: int = 2  # GQA
-    max_position_embeddings: int = 512
-    rope_theta: float = 10000.0
-    layer_norm_eps: float = 1e-6
-    hidden_dropout_prob: float = 0.1
-    attention_dropout_prob: float = 0.1
-    initializer_range: float = 0.02
-    use_flash_attn: bool = True
-    use_rotary: bool = True
-    tie_word_embeddings: bool = True
-    gradient_checkpointing: bool = True
+    """Model configuration, loaded from YAML"""
+    vocab_size: int
+    hidden_size: int
+    intermediate_size: int
+    num_hidden_layers: int
+    num_attention_heads: int
+    num_key_value_heads: int
+    max_position_embeddings: int
+    rope_theta: float
+    layer_norm_eps: float
+    hidden_dropout_prob: float
+    attention_dropout_prob: float
+    initializer_range: float
+    use_flash_attn: bool
+    use_rotary: bool
+    tie_word_embeddings: bool
+    gradient_checkpointing: bool
 
     def __post_init__(self):
         """Validate configuration"""
@@ -39,43 +40,46 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
-    """Training configuration with validation"""
+    """Training configuration, loaded from YAML"""
     # Paths
-    data_dir: str = "./data"
-    output_dir: str = "./models"
-    cache_dir: str = "./cache"
+    data_dir: str
+    output_dir: str
+    cache_dir: str
 
     # Training params
-    batch_size: int = 4
-    gradient_accumulation_steps: int = 8
-    learning_rate: float = 2e-4
-    min_learning_rate: float = 2e-5
-    weight_decay: float = 0.01
-    num_epochs: int = 100
-    warmup_steps: int = 1000
-    max_grad_norm: float = 1.0
+    batch_size: int
+    gradient_accumulation_steps: int
+    learning_rate: float
+    min_learning_rate: float
+    weight_decay: float
+    num_epochs: int
+    warmup_steps: int
+    max_grad_norm: float
 
     # Optimization
-    use_mixed_precision: bool = True
-    use_gradient_checkpointing: bool = True
-    use_compile: bool = False
+    use_mixed_precision: bool
+    use_gradient_checkpointing: bool
+    use_compile: bool
 
     # Logging
-    logging_steps: int = 10
-    save_steps: int = 500
-    eval_steps: int = 500
-    save_total_limit: int = 3
+    logging_steps: int
+    save_steps: int
+    eval_steps: int
+    save_total_limit: int
 
     # Resume training
-    resume_from_checkpoint: Optional[str] = None
+    resume_from_checkpoint: Optional[str]
 
     # Hardware
-    device: str = "cuda" if __import__('torch').cuda.is_available() else "cpu"
-    num_workers: int = 2
-    seed: int = 42
+    device: str
+    num_workers: int
+    seed: int
 
     def __post_init__(self):
         """Validate and setup directories"""
+        if self.device == "auto":
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
         Path(self.data_dir).mkdir(parents=True, exist_ok=True)
         Path(self.output_dir).mkdir(parents=True, exist_ok=True)
         Path(self.cache_dir).mkdir(parents=True, exist_ok=True)
