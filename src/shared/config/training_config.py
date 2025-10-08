@@ -6,7 +6,7 @@ from pathlib import Path
 @dataclass
 class ModelConfig:
     """Advanced model configuration with validation"""
-    vocab_size: int = 512
+    vocab_size: int = 8000
     hidden_size: int = 128
     intermediate_size: int = 256
     num_hidden_layers: int = 4
@@ -51,7 +51,7 @@ class TrainingConfig:
     learning_rate: float = 2e-4
     min_learning_rate: float = 2e-5
     weight_decay: float = 0.01
-    num_epochs: int = 3
+    num_epochs: int = 100
     warmup_steps: int = 1000
     max_grad_norm: float = 1.0
 
