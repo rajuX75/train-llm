@@ -62,6 +62,7 @@ class TrainingConfig:
     use_compile: bool
 
     # Logging
+    wandb_enabled: bool
     logging_steps: int
     save_steps: int
     eval_steps: int
