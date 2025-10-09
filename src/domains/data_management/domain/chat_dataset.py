@@ -10,10 +10,11 @@ from domains.tokenization.domain.tokenizer import Tokenizer
 
 class ChatDataset(Dataset):
     """
-    Memory-efficient chat dataset that caches tokenized data to disk.
-    This avoids re-tokenizing the same data every epoch.
+    A memory-efficient dataset that streams data directly from text files,
+    tokenizes on-the-fly, and caches the tokenized samples to disk.
+    This "lazy loading" approach avoids high memory usage and long startup times
+    by not pre-processing the entire dataset at once.
     """
-
     def __init__(
         self,
         data_files: List[str],
@@ -24,66 +25,55 @@ class ChatDataset(Dataset):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.cache_dir = Path(cache_dir) if cache_dir else None
-
         if self.cache_dir:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         self.data_files = [Path(f) for f in data_files if os.path.exists(f)]
         if not self.data_files:
-            raise ValueError("No valid data files found")
+            raise ValueError("No valid data files provided.")
 
-        self.cached_samples = []
-        self._prepare_dataset()
+        # Lightweight index: (file_path, conversation_start_line)
+        self.sample_index = []
+        self._build_index()
 
-    def _prepare_dataset(self):
+    def _build_index(self):
         """
-        Processes and caches all conversations in a memory-efficient way.
-        It streams files line by line and processes conversations separated by double newlines.
+        Scans through data files to build a lightweight index of sample locations.
+        This index stores the file path and the starting line number of each conversation.
         """
-        print(f"🔎 Preparing dataset from {len(self.data_files)} files...")
-        for file_path in tqdm(self.data_files, desc="Processing files"):
+        print("Building sample index...")
+        for file_path in tqdm(self.data_files, desc="Indexing files"):
             with open(file_path, 'r', encoding='utf-8') as f:
-                buffer = []
-                conv_idx = 0
+                line_num = 0
+                in_conversation = False
                 for line in f:
-                    if line.strip() == "": # Conversation separator
-                        if buffer:
-                            conv_text = "".join(buffer).strip()
-                            if 'User:' in conv_text and 'Assistant:' in conv_text:
-                                self._process_and_cache_conversation(conv_text, file_path, conv_idx)
-                                conv_idx += 1
-                            buffer = []
-                    else:
-                        buffer.append(line)
+                    # A conversation starts with "User:" and is not just whitespace
+                    if line.strip().startswith("User:") and not in_conversation:
+                        self.sample_index.append((file_path, line_num))
+                        in_conversation = True
+                    # A blank line indicates the end of a conversation
+                    elif not line.strip() and in_conversation:
+                        in_conversation = False
+                    line_num += 1
+        if not self.sample_index:
+            raise ValueError("No valid conversations found in the data files.")
+        print(f"✓ Index built. Found {len(self.sample_index)} conversations.")
 
-                # Process the last conversation in the file if it doesn't end with a newline
-                if buffer:
-                    conv_text = "".join(buffer).strip()
-                    if 'User:' in conv_text and 'Assistant:' in conv_text:
-                        self._process_and_cache_conversation(conv_text, file_path, conv_idx)
-
-        if not self.cached_samples:
-             raise ValueError("No valid conversations found after processing files.")
-
-        print(f"✓ Dataset ready. Found {len(self.cached_samples)} cached/processed samples.")
-
-    def _process_and_cache_conversation(self, conv_text: str, file_path: Path, conv_idx: int):
+    def _get_conversation_text(self, file_path: Path, start_line: int) -> str:
         """
-        Hashes, tokenizes, and caches a single conversation.
+        Reads a single conversation from a file starting at a specific line.
         """
-        conv_hash = hashlib.md5(f"{file_path.stem}_{conv_idx}_{conv_text}".encode()).hexdigest()
-        cache_file = self.cache_dir / f"{conv_hash}.pt"
-
-        if cache_file.exists():
-            self.cached_samples.append(cache_file)
-        else:
-            tokenized_data = self._tokenize_conversation(conv_text)
-            if tokenized_data:
-                try:
-                    torch.save(tokenized_data, cache_file)
-                    self.cached_samples.append(cache_file)
-                except Exception as e:
-                    print(f"Error saving cache file for conversation {conv_idx} in {file_path}: {e}")
+        conv_lines = []
+        with open(file_path, 'r', encoding='utf-8') as f:
+            # Fast-forward to the starting line
+            for _ in range(start_line):
+                next(f)
+            # Read lines until a blank line or end of file
+            for line in f:
+                if not line.strip():
+                    break
+                conv_lines.append(line)
+        return "".join(conv_lines).strip()
 
     def _parse_conversation(self, text: str) -> List[Dict[str, str]]:
         """
@@ -163,16 +153,42 @@ class ChatDataset(Dataset):
         }
 
     def __len__(self):
-        return len(self.cached_samples)
+        return len(self.sample_index)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        Loads a pre-tokenized sample from the cache.
+        Retrieves, processes, and caches a single training sample.
+        This method is the core of the lazy-loading mechanism.
         """
-        cache_file = self.cached_samples[idx]
+        file_path, start_line = self.sample_index[idx]
+
+        # Use a unique hash for the cache key based on file and position
+        conv_id = f"{file_path.stem}_{start_line}"
+        conv_hash = hashlib.md5(conv_id.encode()).hexdigest()
+        cache_file = self.cache_dir / f"{conv_hash}.pt"
+
+        # 1. Check cache first
+        if cache_file.exists():
+            try:
+                return torch.load(cache_file)
+            except (EOFError, torch.serialization.DeserializationStorageError) as e:
+                print(f"⚠️ Corrupted cache file: {cache_file}. Re-processing. Error: {e}")
+
+        # 2. If not in cache, read, process, and cache it
+        conv_text = self._get_conversation_text(file_path, start_line)
+        if 'User:' not in conv_text or 'Assistant:' not in conv_text:
+             print(f"⚠️ Skipping invalid sample at {file_path}:{start_line}")
+             return self.__getitem__((idx + 1) % len(self)) # Return next sample
+
+        tokenized_data = self._tokenize_conversation(conv_text)
+
+        if not tokenized_data:
+            print(f"⚠️ Failed to tokenize sample at {file_path}:{start_line}. Skipping.")
+            return self.__getitem__((idx + 1) % len(self)) # Return next sample
+
         try:
-            return torch.load(cache_file)
-        except (EOFError, FileNotFoundError) as e:
-            print(f"⚠️ Corrupted or missing cache file: {cache_file}. Skipping. Error: {e}")
-            # Return a dummy sample to avoid crashing the training loop
-            return self.__getitem__((idx + 1) % len(self))
+            torch.save(tokenized_data, cache_file)
+        except Exception as e:
+            print(f"❌ Error saving cache file {cache_file}: {e}")
+
+        return tokenized_data
