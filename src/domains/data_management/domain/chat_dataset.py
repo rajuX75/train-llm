@@ -37,34 +37,53 @@ class ChatDataset(Dataset):
 
     def _prepare_dataset(self):
         """
-        Processes and caches all conversations. If a conversation
-        is already cached, it skips it.
+        Processes and caches all conversations in a memory-efficient way.
+        It streams files line by line and processes conversations separated by double newlines.
         """
         print(f"🔎 Preparing dataset from {len(self.data_files)} files...")
         for file_path in tqdm(self.data_files, desc="Processing files"):
             with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
+                buffer = []
+                conv_idx = 0
+                for line in f:
+                    if line.strip() == "": # Conversation separator
+                        if buffer:
+                            conv_text = "".join(buffer).strip()
+                            if 'User:' in conv_text and 'Assistant:' in conv_text:
+                                self._process_and_cache_conversation(conv_text, file_path, conv_idx)
+                                conv_idx += 1
+                            buffer = []
+                    else:
+                        buffer.append(line)
 
-            conversations = content.split('\n\n')
-            for i, conv_text in enumerate(conversations):
-                if not (conv_text.strip() and 'User:' in conv_text and 'Assistant:' in conv_text):
-                    continue
-
-                conv_hash = hashlib.md5(f"{file_path.stem}_{i}_{conv_text}".encode()).hexdigest()
-                cache_file = self.cache_dir / f"{conv_hash}.pt"
-
-                if cache_file.exists():
-                    self.cached_samples.append(cache_file)
-                else:
-                    tokenized_data = self._tokenize_conversation(conv_text)
-                    if tokenized_data:
-                        torch.save(tokenized_data, cache_file)
-                        self.cached_samples.append(cache_file)
+                # Process the last conversation in the file if it doesn't end with a newline
+                if buffer:
+                    conv_text = "".join(buffer).strip()
+                    if 'User:' in conv_text and 'Assistant:' in conv_text:
+                        self._process_and_cache_conversation(conv_text, file_path, conv_idx)
 
         if not self.cached_samples:
              raise ValueError("No valid conversations found after processing files.")
 
         print(f"✓ Dataset ready. Found {len(self.cached_samples)} cached/processed samples.")
+
+    def _process_and_cache_conversation(self, conv_text: str, file_path: Path, conv_idx: int):
+        """
+        Hashes, tokenizes, and caches a single conversation.
+        """
+        conv_hash = hashlib.md5(f"{file_path.stem}_{conv_idx}_{conv_text}".encode()).hexdigest()
+        cache_file = self.cache_dir / f"{conv_hash}.pt"
+
+        if cache_file.exists():
+            self.cached_samples.append(cache_file)
+        else:
+            tokenized_data = self._tokenize_conversation(conv_text)
+            if tokenized_data:
+                try:
+                    torch.save(tokenized_data, cache_file)
+                    self.cached_samples.append(cache_file)
+                except Exception as e:
+                    print(f"Error saving cache file for conversation {conv_idx} in {file_path}: {e}")
 
     def _parse_conversation(self, text: str) -> List[Dict[str, str]]:
         """
