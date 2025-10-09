@@ -117,12 +117,12 @@ class TrainingService:
             self.train_dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
-            num_workers=self.config.num_workers,
+            num_workers=0,
             pin_memory=True,
             drop_last=True
         )
 
-        if WANDB_AVAILABLE:
+        if WANDB_AVAILABLE and self.config.wandb_enabled:
             wandb.init(project="chat-model-training", config={**self.config.__dict__, **self.model.config.__dict__})
             wandb.watch(self.model)
 
@@ -137,7 +137,7 @@ class TrainingService:
                 if self.global_step % self.config.logging_steps == 0:
                     lr = self.scheduler.get_last_lr()[0]
                     progress_bar.set_postfix({'loss': f'{loss:.4f}', 'lr': f'{lr:.2e}'})
-                    if WANDB_AVAILABLE:
+                    if WANDB_AVAILABLE and self.config.wandb_enabled:
                         wandb.log({'train/loss': loss, 'train/learning_rate': lr, 'train/step': self.global_step})
 
                 if self.val_dataset and self.global_step > 0 and self.global_step % self.config.eval_steps == 0:
@@ -151,7 +151,7 @@ class TrainingService:
                 self._evaluate()
             self.checkpoint_handler.save(self.model, self.optimizer, self.scheduler, epoch + 1, self.global_step, self.best_val_loss, self.tokenizer)
 
-        if WANDB_AVAILABLE:
+        if WANDB_AVAILABLE and self.config.wandb_enabled:
             wandb.finish()
 
     def _training_step(self, batch: Dict[str, torch.Tensor]) -> float:
@@ -189,7 +189,7 @@ class TrainingService:
     def _evaluate(self):
         """Evaluates the model on the validation set."""
         self.model.eval()
-        val_loader = DataLoader(self.val_dataset, batch_size=self.config.batch_size, num_workers=self.config.num_workers)
+        val_loader = DataLoader(self.val_dataset, batch_size=self.config.batch_size, num_workers=0)
 
         total_loss = 0.0
         for batch in tqdm(val_loader, desc="Evaluating", leave=False):
@@ -200,7 +200,7 @@ class TrainingService:
 
         avg_loss = total_loss / len(val_loader)
         print(f"\n📊 Validation loss: {avg_loss:.4f}")
-        if WANDB_AVAILABLE:
+        if WANDB_AVAILABLE and self.config.wandb_enabled:
             wandb.log({'val/loss': avg_loss, 'val/step': self.global_step})
 
         if avg_loss < self.best_val_loss:
